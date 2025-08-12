@@ -6,7 +6,7 @@
 
 import SwiftUI
 
-struct CircularRangeSlider: View {
+public struct CircularRangeSlider: View {
     @Binding var range: ClosedRange<Double>
     var bounds: ClosedRange<Double>
     var circleDiameter: CGFloat
@@ -16,12 +16,12 @@ struct CircularRangeSlider: View {
     var color: Color
     var step: Double
     
-    static var defaultCircleDiameter: CGFloat { 220 }
-    static var defaultArcTrimmingDegrees: CGFloat { 75 }
-    static var defaultTrackWidth: CGFloat { 45 }
-    static var defaultHandleWidth: CGFloat { 36 }
+    @usableFromInline static var defaultCircleDiameter: CGFloat { 220 }
+    @usableFromInline static var defaultArcTrimmingDegrees: CGFloat { 75 }
+    @usableFromInline static var defaultTrackWidth: CGFloat { 45 }
+    @usableFromInline static var defaultHandleWidth: CGFloat { 36 }
 
-    init(
+    public init(
         range: Binding<ClosedRange<Double>>,
         bounds: ClosedRange<Double>,
         circleDiameter: CGFloat = CircularRangeSlider.defaultCircleDiameter,
@@ -67,7 +67,7 @@ struct CircularRangeSlider: View {
     static let sliderAnimationDuration: Double = 0.3
     @State private var showSlider: Bool = true
 
-    var body: some View {
+    public var body: some View {
         ZStack {
             trimmedCircleTrack()
             if showSlider {
