@@ -333,6 +333,7 @@ private extension CircularRangeSlider {
 
 private struct CircularRangeSliderPreview: View {
     @State private var showSlider: Bool = false
+    @State private var overlayValues: Bool = true
     @State private var rangeUserSelection: ClosedRange<Double>
     @State private var bounds: ClosedRange<Double>
     @State private var circleDiameter: CGFloat = CircularRangeSlider.defaultCircleDiameter
@@ -529,7 +530,8 @@ private struct CircularRangeSliderPreview: View {
                         .foregroundStyle(.secondary)
                     }
                 }
-                Section {
+                Section(header: Text("Preview")) {
+                    Toggle("Overlay values", isOn: $overlayValues)
                     Button("Show circular range slider") {
                         showSlider = true
                     }
@@ -550,16 +552,18 @@ private struct CircularRangeSliderPreview: View {
                         color: color,
                         step: step
                     )
-                    VStack {
-                        Text(String(format: "%.1f", rangeUserSelection.lowerBound))
-                            .bold()
-                            .font(.system(size: 24))
-                        Image(systemName: "arrow.up.arrow.down")
-                            .padding(.vertical, 0.25)
-                            .foregroundStyle(.secondary)
-                        Text(String(format: "%.1f", rangeUserSelection.upperBound))
-                            .bold()
-                            .font(.system(size: 24))
+                    if overlayValues {
+                        VStack {
+                            Text(String(format: "%.1f", rangeUserSelection.lowerBound))
+                                .bold()
+                                .font(.system(size: 24))
+                            Image(systemName: "arrow.up.arrow.down")
+                                .padding(.vertical, 0.25)
+                                .foregroundStyle(.secondary)
+                            Text(String(format: "%.1f", rangeUserSelection.upperBound))
+                                .bold()
+                                .font(.system(size: 24))
+                        }
                     }
                 }
                 .navigationTitle("Circular range slider")
