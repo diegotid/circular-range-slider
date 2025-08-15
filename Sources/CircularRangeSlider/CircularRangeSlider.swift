@@ -236,11 +236,11 @@ private extension CircularRangeSlider {
         if newDegrees < 0 {
             newDegrees += 360
         }
-        if rangeDegrees.lowerBound - boundsDegrees.lowerBound < handleWidth &&
-            abs(newDegrees - rangeDegrees.lowerBound) > handleWidth {
+        if rangeDegrees.lowerBound - boundsDegrees.lowerBound < handleSizeDegrees &&
+            abs(newDegrees - rangeDegrees.lowerBound) > handleSizeDegrees {
             return bounds.lowerBound
         } else if newDegrees >= boundsDegrees.lowerBound &&
-                    newDegrees < rangeDegrees.upperBound - handleWidth {
+                    newDegrees < rangeDegrees.upperBound - handleSizeDegrees {
             return valueFromAngle(Angle(degrees: newDegrees))
         } else {
             return range.lowerBound
@@ -253,11 +253,11 @@ private extension CircularRangeSlider {
         if newDegrees < 0 {
             newDegrees += 360
         }
-        if boundsDegrees.upperBound - rangeDegrees.upperBound < handleWidth &&
-            abs(newDegrees - rangeDegrees.upperBound) > handleWidth {
+        if boundsDegrees.upperBound - rangeDegrees.upperBound < handleSizeDegrees &&
+            abs(newDegrees - rangeDegrees.upperBound) > handleSizeDegrees {
             return bounds.upperBound
         } else if newDegrees <= boundsDegrees.upperBound &&
-                    newDegrees > rangeDegrees.lowerBound + handleWidth {
+                    newDegrees > rangeDegrees.lowerBound + handleSizeDegrees {
             return valueFromAngle(Angle(degrees: newDegrees))
         } else {
             return range.upperBound
