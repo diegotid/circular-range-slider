@@ -215,8 +215,12 @@ private extension CircularRangeSlider {
                             && newUpper < bounds.upperBound
                     }
                     if handle != .arc || arcMoves {
-                        newLower = snapToStep(newLower, for: .start)
-                        newUpper = snapToStep(newUpper, for: .end)
+                        if handle == .end && newLower != bounds.lowerBound {
+                            newLower = snapToStep(newLower, for: .start)
+                        }
+                        if handle == .start && newUpper != bounds.upperBound {
+                            newUpper = snapToStep(newUpper, for: .end)
+                        }
                         self.range = newLower...newUpper
                     }
                     if draggingHandle == nil {
