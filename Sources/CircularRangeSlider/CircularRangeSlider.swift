@@ -15,6 +15,8 @@ public struct CircularRangeSlider: View {
     var handleWidth: CGFloat
     var color: Color
     var step: Double
+    var markers: [Double]?
+    var markerLabel: ((Double) -> AnyView)?
     
     @usableFromInline static var defaultCircleDiameter: CGFloat { 220 }
     @usableFromInline static var defaultArcTrimmingDegrees: CGFloat { 75 }
@@ -29,7 +31,9 @@ public struct CircularRangeSlider: View {
         trackWidth: CGFloat = CircularRangeSlider.defaultTrackWidth,
         handleWidth: CGFloat = CircularRangeSlider.defaultHandleWidth,
         color: Color? = nil,
-        step: Double? = nil
+        step: Double? = nil,
+        markers: [Double]? = nil,
+        markerLabel: ((Double) -> AnyView)? = nil
     ) {
         self._range = range
         self.bounds = bounds
@@ -39,6 +43,8 @@ public struct CircularRangeSlider: View {
         self.handleWidth = handleWidth
         self.color = color ?? .accentColor
         self.step = step ?? CircularRangeSlider.defaultBoundsStep(for: bounds)
+        self.markers = markers
+        self.markerLabel = markerLabel
     }
     
     private var handleSizeDegrees: CGFloat {
@@ -56,6 +62,10 @@ public struct CircularRangeSlider: View {
         let end = 360 - (arcTrimmingDegrees / 2)
         return start...end
     }
+    
+    private var fullCircle: Bool {
+        arcTrimmingDegrees < handleSizeDegrees * 2
+    }
 
     @State private var startDragOffset: Angle = .zero
     @State private var endDragOffset: Angle = .zero
@@ -67,9 +77,23 @@ public struct CircularRangeSlider: View {
     static let sliderAnimationDuration: Double = 0.3
     @State private var showSlider: Bool = true
 
+    @State private var stuckMarkerForStart: Double?
+    @State private var stuckMarkerForEnd: Double?
+    @State private var stuckMarkerForArc: Double?
+    @State private var hasHapticStuckStart: Bool = false
+    @State private var hasHapticStuckEnd: Bool = false
+    @State private var hasHapticStuckArc: Bool = false
+
+    private var markerSnapThreshold: Double {
+        max((bounds.upperBound - bounds.lowerBound) * 0.02, 4)
+    }
+
     public var body: some View {
         ZStack {
             trimmedCircleTrack()
+            if let markers = markers {
+                markersView(markers)
+            }
             if showSlider {
                 arcView()
                     .gesture(dragGesture(for: .arc))
@@ -123,6 +147,37 @@ public struct CircularRangeSlider: View {
                 .foregroundStyle(Color(uiColor: .systemBackground).opacity(0.25))
                 .rotationEffect(angle)
                 .position(x: x, y: y)
+        }
+    }
+    
+    @ViewBuilder
+    private func markersView(_ markers: [Double]) -> some View {
+        ForEach(Array(markers.enumerated()), id: \.offset) { _, marker in
+            if marker >= bounds.lowerBound && marker <= bounds.upperBound {
+                markerView(at: marker)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func markerView(at value: Double) -> some View {
+        let angle = angleFromValue(value)
+        let radius = circleDiameter / 2
+        let markerRadius = radius - trackWidth * 0.75
+        let labelRadius = markerRadius * 0.5
+        let markerX = radius * (1 + (markerRadius / radius) * cos(CGFloat(angle.radians - (3 * .pi / 2))))
+        let markerY = radius * (1 + (markerRadius / radius) * sin(CGFloat(angle.radians - (3 * .pi / 2))))
+        let labelX = radius * (1 + (labelRadius / radius) * cos(CGFloat(angle.radians - (3 * .pi / 2))))
+        let labelY = radius * (1 + (labelRadius / radius) * sin(CGFloat(angle.radians - (3 * .pi / 2))))
+        ZStack {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .position(x: markerX, y: markerY)
+            if let markerLabel = markerLabel {
+                markerLabel(value)
+                    .position(x: labelX, y: labelY)
+            }
         }
     }
 }
@@ -183,6 +238,45 @@ private extension CircularRangeSlider {
         DragGesture()
             .onChanged { value in
                 let angle: Angle = angleFromDrag(location: value.location)
+                var newLower: Double = range.lowerBound
+                var newUpper: Double = range.upperBound
+                var stuckMarker: Double? {
+                    get {
+                        switch handle {
+                        case .start: return stuckMarkerForStart
+                        case .end: return stuckMarkerForEnd
+                        case .arc: return stuckMarkerForArc
+                        }
+                    }
+                    set {
+                        switch handle {
+                        case .start: stuckMarkerForStart = newValue
+                        case .end: stuckMarkerForEnd = newValue
+                        case .arc: stuckMarkerForArc = newValue
+                        }
+                    }
+                }
+                var hasHapticStuck: Bool {
+                    get {
+                        switch handle {
+                        case .start: return hasHapticStuckStart
+                        case .end: return hasHapticStuckEnd
+                        case .arc: return hasHapticStuckArc
+                        }
+                    }
+                    set {
+                        switch handle {
+                        case .start: hasHapticStuckStart = newValue
+                        case .end: hasHapticStuckEnd = newValue
+                        case .arc: hasHapticStuckArc = newValue
+                        }
+                    }
+                }
+                let useMarkers = markers ?? []
+                let isDraggingStart = [.start, .arc].contains(handle)
+                let isDraggingEnd = [.end, .arc].contains(handle)
+                let priorLower = range.lowerBound
+                let priorUpper = range.upperBound
                 if draggingHandle == handle || draggingHandle == nil {
                     if let last: Angle = lastHapticAngle {
                         if abs(angle.degrees - last.degrees) > 4 {
@@ -194,24 +288,68 @@ private extension CircularRangeSlider {
                         lastHapticAngle = angle
                     }
                     var arcMoves: Bool = true
-                    var newLower: Double = range.lowerBound
-                    var newUpper: Double = range.upperBound
-                    if [.start, .arc].contains(handle) {
+                    if isDraggingStart {
                         if draggingHandle == nil {
                             startDragOffset = Angle(degrees: angle.degrees - rangeDegrees.lowerBound)
                         }
-                        newLower = moveStartHandleResultingInValue(to: angle)
+                        let candidate = moveStartHandleResultingInValue(to: angle)
+                        if !useMarkers.isEmpty {
+                            if let nearest = useMarkers.min(by: { abs($0 - candidate) < abs($1 - candidate) }),
+                               abs(nearest - candidate) < markerSnapThreshold {
+                                newLower = nearest
+                                if stuckMarker != nearest {
+                                    stuckMarker = nearest
+                                    if !hasHapticStuck {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        hasHapticStuck = true
+                                    }
+                                }
+                            } else if let stuck = stuckMarker, abs(candidate - stuck) < markerSnapThreshold * 1.5 {
+                                newLower = stuck
+                            } else {
+                                newLower = candidate
+                                if stuckMarker != nil {
+                                    stuckMarker = nil
+                                    hasHapticStuck = false
+                                }
+                            }
+                        } else {
+                            newLower = candidate
+                        }
                         arcMoves = arcMoves
-                            && newLower != range.lowerBound
+                            && newLower != priorLower
                             && newLower > bounds.lowerBound
                     }
-                    if [.end, .arc].contains(handle) {
+                    if isDraggingEnd {
                         if draggingHandle == nil {
                             endDragOffset = Angle(degrees: angle.degrees - rangeDegrees.upperBound)
                         }
-                        newUpper = moveEndHandleResultingInValue(to: angle)
+                        let candidate = moveEndHandleResultingInValue(to: angle)
+                        if !useMarkers.isEmpty {
+                            if let nearest = useMarkers.min(by: { abs($0 - candidate) < abs($1 - candidate) }),
+                               abs(nearest - candidate) < markerSnapThreshold {
+                                newUpper = nearest
+                                if stuckMarker != nearest {
+                                    stuckMarker = nearest
+                                    if !hasHapticStuck {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        hasHapticStuck = true
+                                    }
+                                }
+                            } else if let stuck = stuckMarker, abs(candidate - stuck) < markerSnapThreshold * 1.5 {
+                                newUpper = stuck
+                            } else {
+                                newUpper = candidate
+                                if stuckMarker != nil {
+                                    stuckMarker = nil
+                                    hasHapticStuck = false
+                                }
+                            }
+                        } else {
+                            newUpper = candidate
+                        }
                         arcMoves = arcMoves
-                            && newUpper != range.upperBound
+                            && newUpper != priorUpper
                             && newUpper < bounds.upperBound
                     }
                     if handle != .arc || arcMoves {
@@ -231,9 +369,15 @@ private extension CircularRangeSlider {
             .onEnded { _ in
                 draggingHandle = nil
                 lastHapticAngle = nil
+                stuckMarkerForStart = nil
+                stuckMarkerForEnd = nil
+                stuckMarkerForArc = nil
+                hasHapticStuckStart = false
+                hasHapticStuckEnd = false
+                hasHapticStuckArc = false
             }
     }
-    
+
     func moveStartHandleResultingInValue(to angle: Angle) -> Double {
         let raw = angle.degrees - startDragOffset.degrees
         var newDegrees = raw.truncatingRemainder(dividingBy: 360)
@@ -346,6 +490,7 @@ private struct CircularRangeSliderPreview: View {
     @State private var handleWidth: CGFloat = CircularRangeSlider.defaultHandleWidth
     @State private var color: Color
     @State private var step: Double
+    @State private var markers: [Double] = []
     
     private let defaultBounds: ClosedRange<Double> = 0.0...999.0
 
@@ -361,6 +506,13 @@ private struct CircularRangeSliderPreview: View {
     var body: some View {
         VStack {
             Form {
+                Section(header: Text("Preview")) {
+                    Toggle("Overlay values", isOn: $overlayValues)
+                    Button("Show circular range slider") {
+                        showSlider = true
+                    }
+                    .frame(maxWidth: .infinity)
+                }
                 Section(header: Text("Bounds")) {
                     HStack {
                         Text("Lower")
@@ -467,6 +619,36 @@ private struct CircularRangeSliderPreview: View {
                         .foregroundStyle(.secondary)
                     }
                 }
+                Section(header: Text("Markers")) {
+                    ForEach(Array(markers.enumerated()), id: \.offset) { index, marker in
+                        HStack {
+                            Text(String(format: "%.1f", marker))
+                                .frame(width: 56, alignment: .leading)
+                                .foregroundStyle(.primary)
+                            Slider(
+                                value: Binding<Double>(
+                                    get: { marker },
+                                    set: { self.markers[index] = $0 }
+                                ),
+                                in: bounds
+                            )
+                            Button {
+                                markers.remove(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    Button {
+                        let newMarker = bounds.lowerBound + (bounds.upperBound - bounds.lowerBound) / 2
+                        markers.append(newMarker)
+                    } label: {
+                        Label("Add Marker", systemImage: "plus.circle.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                }
                 Section(header: Text("Appearance")) {
                     ColorPicker("Slider color", selection: $color)
                     HStack {
@@ -534,13 +716,6 @@ private struct CircularRangeSliderPreview: View {
                         .foregroundStyle(.secondary)
                     }
                 }
-                Section(header: Text("Preview")) {
-                    Toggle("Overlay values", isOn: $overlayValues)
-                    Button("Show circular range slider") {
-                        showSlider = true
-                    }
-                    .frame(maxWidth: .infinity)
-                }
             }
         }
         .sheet(isPresented: $showSlider) {
@@ -554,7 +729,20 @@ private struct CircularRangeSliderPreview: View {
                         trackWidth: trackWidth,
                         handleWidth: handleWidth,
                         color: color,
-                        step: step
+                        step: step,
+                        markers: markers.isEmpty ? nil : markers,
+                        markerLabel: { value in
+                            AnyView(
+                                VStack {
+                                    Text(String(format: "%.0f", value))
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Text("custom")
+                                        .bold()
+                                        .foregroundColor(.primary)
+                                }
+                            )
+                        }
                     )
                     if overlayValues {
                         VStack {
