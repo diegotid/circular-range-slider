@@ -182,6 +182,64 @@ public struct CircularRangeSlider: View {
     }
 }
 
+extension CircularRangeSlider {
+    enum Handle {
+        case start, end, arc
+    }
+    
+    func angleFromValue(_ value: Double) -> Angle {
+        let totalRange = bounds.upperBound - bounds.lowerBound
+        let valueOffset = value - bounds.lowerBound
+        let fraction = valueOffset / totalRange
+        let angleRange = boundsDegrees.upperBound - boundsDegrees.lowerBound
+        let degrees = boundsDegrees.lowerBound + fraction * angleRange
+        return Angle(degrees: degrees)
+    }
+
+    func valueFromAngle(_ angle: Angle) -> Double {
+        let totalRange = bounds.upperBound - bounds.lowerBound
+        let angleRange = boundsDegrees.upperBound - boundsDegrees.lowerBound
+        let fraction = (angle.degrees - boundsDegrees.lowerBound) / angleRange
+        let value = bounds.lowerBound + fraction * totalRange
+        return value
+    }
+    
+    func snapToStep(_ value: Double, for end: Handle) -> Double {
+        guard step > 0 else { return value }
+        let rounded = (value / step).rounded() * step
+        switch end {
+        case .start:
+            return max(rounded, bounds.lowerBound)
+        case .end:
+            return min(rounded, bounds.upperBound)
+        default:
+            return value
+        }
+    }
+    
+    func clampRangeIfNeeded(fromPriorBounds oldBounds: ClosedRange<Double>) {
+        var lower = range.lowerBound
+        var upper = range.upperBound
+        if lower < bounds.lowerBound {
+            lower = bounds.lowerBound
+        }
+        if upper > bounds.upperBound {
+            upper = bounds.upperBound
+        }
+        if lower > upper {
+            lower = bounds.lowerBound
+            upper = bounds.upperBound
+        }
+        animateRangeChange(to: lower...upper, fromPriorBounds: oldBounds)
+    }
+    
+    static func defaultBoundsStep(for bounds: ClosedRange<Double>) -> Double {
+        let scope = bounds.upperBound - bounds.lowerBound
+        let base = pow(10.0, floor(log10(max(scope / 10, 1))))
+        return base
+    }
+}
+
 private extension CircularRangeSlider {
     struct CircleArc: Shape {
         var startAngle: Angle
@@ -201,10 +259,6 @@ private extension CircularRangeSlider {
             return path
         }
     }
-    
-    enum Handle {
-        case start, end, arc
-    }
 
     func angleFromDrag(location: CGPoint) -> Angle {
         let radius = circleDiameter / 2
@@ -213,25 +267,6 @@ private extension CircularRangeSlider {
         let angle = atan2(vector.dy, vector.dx) * 180 / .pi
         let normalized = angle < 0 ? angle + 360 : angle
         return Angle(degrees: normalized)
-    }
-    
-    static func defaultBoundsStep(for bounds: ClosedRange<Double>) -> Double {
-        let scope = bounds.upperBound - bounds.lowerBound
-        let base = pow(10.0, floor(log10(max(scope / 10, 1))))
-        return base
-    }
-
-    func snapToStep(_ value: Double, for end: Handle) -> Double {
-        guard step > 0 else { return value }
-        let rounded = (value / step).rounded() * step
-        switch end {
-        case .start:
-            return max(rounded, bounds.lowerBound)
-        case .end:
-            return min(rounded, bounds.upperBound)
-        default:
-            return value
-        }
     }
 
     func dragGesture(for handle: Handle) -> some Gesture {
@@ -410,39 +445,6 @@ private extension CircularRangeSlider {
         } else {
             return range.upperBound
         }
-    }
-    
-    func angleFromValue(_ value: Double) -> Angle {
-        let totalRange = bounds.upperBound - bounds.lowerBound
-        let valueOffset = value - bounds.lowerBound
-        let fraction = valueOffset / totalRange
-        let angleRange = boundsDegrees.upperBound - boundsDegrees.lowerBound
-        let degrees = boundsDegrees.lowerBound + fraction * angleRange
-        return Angle(degrees: degrees)
-    }
-    
-    func valueFromAngle(_ angle: Angle) -> Double {
-        let totalRange = bounds.upperBound - bounds.lowerBound
-        let angleRange = boundsDegrees.upperBound - boundsDegrees.lowerBound
-        let fraction = (angle.degrees - boundsDegrees.lowerBound) / angleRange
-        let value = bounds.lowerBound + fraction * totalRange
-        return value
-    }
-    
-    func clampRangeIfNeeded(fromPriorBounds oldBounds: ClosedRange<Double>) {
-        var lower = range.lowerBound
-        var upper = range.upperBound
-        if lower < bounds.lowerBound {
-            lower = bounds.lowerBound
-        }
-        if upper > bounds.upperBound {
-            upper = bounds.upperBound
-        }
-        if lower > upper {
-            lower = bounds.lowerBound
-            upper = bounds.upperBound
-        }
-        animateRangeChange(to: lower...upper, fromPriorBounds: oldBounds)
     }
 
     func animateRangeChange(
