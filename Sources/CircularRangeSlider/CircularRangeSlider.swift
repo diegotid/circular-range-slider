@@ -162,22 +162,34 @@ public struct CircularRangeSlider: View {
     @ViewBuilder
     private func markerView(at value: Double) -> some View {
         let angle = angleFromValue(value)
-        let radius = circleDiameter / 2
-        let markerRadius = radius - trackWidth * 0.75
-        let labelRadius = markerRadius * 0.5
-        let markerX = radius * (1 + (markerRadius / radius) * cos(CGFloat(angle.radians - (3 * .pi / 2))))
-        let markerY = radius * (1 + (markerRadius / radius) * sin(CGFloat(angle.radians - (3 * .pi / 2))))
-        let labelX = radius * (1 + (labelRadius / radius) * cos(CGFloat(angle.radians - (3 * .pi / 2))))
-        let labelY = radius * (1 + (labelRadius / radius) * sin(CGFloat(angle.radians - (3 * .pi / 2))))
+        let centerRadius = circleDiameter / 2
+        let markerRadius = centerRadius - trackWidth * 0.75
+        let labelRadius: CGFloat = centerRadius * 0.25
+        let markerX = centerRadius + markerRadius * cos(CGFloat(angle.radians - (3 * .pi / 2)))
+        let markerY = centerRadius + markerRadius * sin(CGFloat(angle.radians - (3 * .pi / 2)))
+        let labelX = centerRadius + labelRadius * cos(CGFloat(angle.radians - (3 * .pi / 2)))
+        let labelY = centerRadius + labelRadius * sin(CGFloat(angle.radians - (3 * .pi / 2)))
         ZStack {
+            if let markerLabel = markerLabel {
+                Path { path in
+                    path.move(to: CGPoint(x: labelX, y: labelY))
+                    path.addLine(to: CGPoint(x: markerX, y: markerY))
+                }
+                .stroke(Color(uiColor: .secondarySystemBackground), lineWidth: 2)
+                markerLabel(value)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                    )
+                    .position(x: labelX, y: labelY)
+            }
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
                 .position(x: markerX, y: markerY)
-            if let markerLabel = markerLabel {
-                markerLabel(value)
-                    .position(x: labelX, y: labelY)
-            }
         }
     }
 }
