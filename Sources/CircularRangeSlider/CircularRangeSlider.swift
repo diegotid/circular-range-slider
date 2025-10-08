@@ -76,16 +76,20 @@ public struct CircularRangeSlider: View {
     static let sliderAnimationSteps: Int = 20
     static let sliderAnimationDuration: Double = 0.3
     @State private var showSlider: Bool = true
-
     @State private var stuckMarkerForStart: Double?
     @State private var stuckMarkerForEnd: Double?
     @State private var stuckMarkerForArc: Double?
     @State private var hasHapticStuckStart: Bool = false
     @State private var hasHapticStuckEnd: Bool = false
     @State private var hasHapticStuckArc: Bool = false
-
+    @State private var visibleMarkerLabels: Set<Double> = []
+    
     private var markerSnapThreshold: Double {
         max((bounds.upperBound - bounds.lowerBound) * 0.02, 4)
+    }
+    
+    private var markerProximityThreshold: Double {
+        max((bounds.upperBound - bounds.lowerBound) * 0.05, 10)
     }
 
     public var body: some View {
@@ -105,6 +109,12 @@ public struct CircularRangeSlider: View {
         }
         .onChange(of: bounds) { oldValue, _ in
             clampRangeIfNeeded(fromPriorBounds: oldValue)
+        }
+        .onChange(of: range) { _, _ in
+            updateVisibleMarkerLabels()
+        }
+        .onAppear {
+            updateVisibleMarkerLabels()
         }
         .frame(width: circleDiameter, height: circleDiameter)
     }
@@ -164,18 +174,29 @@ public struct CircularRangeSlider: View {
         let angle = angleFromValue(value)
         let centerRadius = circleDiameter / 2
         let markerRadius = centerRadius - trackWidth * 0.75
-        let labelRadius: CGFloat = centerRadius * 0.25
-        let markerX = centerRadius + markerRadius * cos(CGFloat(angle.radians - (3 * .pi / 2)))
-        let markerY = centerRadius + markerRadius * sin(CGFloat(angle.radians - (3 * .pi / 2)))
-        let labelX = centerRadius + labelRadius * cos(CGFloat(angle.radians - (3 * .pi / 2)))
-        let labelY = centerRadius + labelRadius * sin(CGFloat(angle.radians - (3 * .pi / 2)))
+        let normalizedAngle = angle.radians - (3 * .pi / 2)
+        let cosValue = cos(normalizedAngle)
+        let sinValue = sin(normalizedAngle)
+        let verticalWeight = abs(sinValue)
+        let horizontalWeight = abs(cosValue)
+        let labelRadius: CGFloat = centerRadius * (
+            0.35 * verticalWeight +
+            0.05 * horizontalWeight
+        )
+        let markerX = centerRadius + markerRadius * cos(CGFloat(normalizedAngle))
+        let markerY = centerRadius + markerRadius * sin(CGFloat(normalizedAngle))
+        let labelX = centerRadius + labelRadius * cos(CGFloat(normalizedAngle))
+        let labelY = centerRadius + labelRadius * sin(CGFloat(normalizedAngle))
+        let isLabelVisible = visibleMarkerLabels.contains(value)
         ZStack {
-            if let markerLabel = markerLabel {
+            if let markerLabel = markerLabel, isLabelVisible {
                 Path { path in
                     path.move(to: CGPoint(x: labelX, y: labelY))
                     path.addLine(to: CGPoint(x: markerX, y: markerY))
                 }
                 .stroke(Color(uiColor: .secondarySystemBackground), lineWidth: 2)
+                .opacity(isLabelVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: isLabelVisible)
                 markerLabel(value)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -185,6 +206,10 @@ public struct CircularRangeSlider: View {
                             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                     )
                     .position(x: labelX, y: labelY)
+                    .opacity(isLabelVisible ? 1 : 0)
+                    .scaleEffect(isLabelVisible ? 1 : 0.8)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7),
+                               value: isLabelVisible)
             }
             Circle()
                 .fill(color)
@@ -249,6 +274,22 @@ extension CircularRangeSlider {
         let scope = bounds.upperBound - bounds.lowerBound
         let base = pow(10.0, floor(log10(max(scope / 10, 1))))
         return base
+    }
+    
+    private func updateVisibleMarkerLabels() {
+        guard let markers = markers, !markers.isEmpty else {
+            visibleMarkerLabels.removeAll()
+            return
+        }
+        var newVisibleLabels: Set<Double> = []
+        for marker in markers {
+            if marker >= range.lowerBound && marker <= range.upperBound {
+                newVisibleLabels.insert(marker)
+            }
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            visibleMarkerLabels = newVisibleLabels
+        }
     }
 }
 
