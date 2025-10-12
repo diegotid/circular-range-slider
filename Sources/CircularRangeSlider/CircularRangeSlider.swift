@@ -173,43 +173,37 @@ public struct CircularRangeSlider: View {
     private func markerView(at value: Double) -> some View {
         let angle = angleFromValue(value)
         let centerRadius = circleDiameter / 2
-        let markerRadius = centerRadius - trackWidth * 0.75
-        let normalizedAngle = angle.radians - (3 * .pi / 2)
-        let cosValue = cos(normalizedAngle)
-        let sinValue = sin(normalizedAngle)
-        let verticalWeight = abs(sinValue)
-        let horizontalWeight = abs(cosValue)
-        let labelRadius: CGFloat = centerRadius * (
-            0.35 * verticalWeight +
-            0.05 * horizontalWeight
-        )
-        let markerX = centerRadius + markerRadius * cos(CGFloat(normalizedAngle))
-        let markerY = centerRadius + markerRadius * sin(CGFloat(normalizedAngle))
-        let labelX = centerRadius + labelRadius * cos(CGFloat(normalizedAngle))
-        let labelY = centerRadius + labelRadius * sin(CGFloat(normalizedAngle))
+        let markerRadius = centerRadius + trackWidth * 0.65
+        let sine = sin(CGFloat(angle.radians - (3 * .pi / 2)))
+        let cosine = cos(CGFloat(angle.radians - (3 * .pi / 2)))
+        let markerX = centerRadius + markerRadius * cosine
+        let markerY = centerRadius + markerRadius * sine
+        let labelRadius = centerRadius + trackWidth * 1.85
+        let labelAngle = angle.radians - (3 * .pi / 2)
+        let labelX = centerRadius + labelRadius * cos(CGFloat(labelAngle))
+        let labelY = centerRadius + labelRadius * sin(CGFloat(labelAngle))
         let isLabelVisible = visibleMarkerLabels.contains(value)
         ZStack {
             if let markerLabel = markerLabel, isLabelVisible {
-                Path { path in
-                    path.move(to: CGPoint(x: labelX, y: labelY))
-                    path.addLine(to: CGPoint(x: markerX, y: markerY))
+                Group {
+                    Path { path in
+                        path.move(to: CGPoint(x: markerX, y: markerY))
+                        path.addLine(to: CGPoint(x: labelX, y: labelY))
+                    }
+                    .stroke(Color(uiColor: .secondarySystemBackground), lineWidth: 2)
+                    markerLabel(value)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        )
+                        .position(x: labelX, y: labelY)
                 }
-                .stroke(Color(uiColor: .secondarySystemBackground), lineWidth: 2)
                 .opacity(isLabelVisible ? 1 : 0)
-                .animation(.easeInOut(duration: 0.2), value: isLabelVisible)
-                markerLabel(value)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(uiColor: .secondarySystemBackground))
-                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                    )
-                    .position(x: labelX, y: labelY)
-                    .opacity(isLabelVisible ? 1 : 0)
-                    .scaleEffect(isLabelVisible ? 1 : 0.8)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7),
-                               value: isLabelVisible)
+                .scaleEffect(isLabelVisible ? 1 : 0.8)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isLabelVisible)
             }
             Circle()
                 .fill(color)
@@ -827,3 +821,4 @@ private struct CircularRangeSliderPreview: View {
         }
     }
 }
+
