@@ -17,6 +17,7 @@ public struct CircularRangeSlider: View {
     var step: Double
     var markers: [Double]?
     var markerLabel: ((Double) -> AnyView)?
+    var isMarkerOutside: Bool
     
     @usableFromInline static var defaultCircleDiameter: CGFloat { 220 }
     @usableFromInline static var defaultArcTrimmingDegrees: CGFloat { 75 }
@@ -33,7 +34,8 @@ public struct CircularRangeSlider: View {
         color: Color? = nil,
         step: Double? = nil,
         markers: [Double]? = nil,
-        markerLabel: ((Double) -> AnyView)? = nil
+        markerLabel: ((Double) -> AnyView)? = nil,
+        isMarkerOutside: Bool = false
     ) {
         self._range = range
         self.bounds = bounds
@@ -45,6 +47,7 @@ public struct CircularRangeSlider: View {
         self.step = step ?? CircularRangeSlider.defaultBoundsStep(for: bounds)
         self.markers = markers
         self.markerLabel = markerLabel
+        self.isMarkerOutside = isMarkerOutside
     }
     
     private var handleSizeDegrees: CGFloat {
@@ -82,7 +85,7 @@ public struct CircularRangeSlider: View {
     @State private var hasHapticStuckStart: Bool = false
     @State private var hasHapticStuckEnd: Bool = false
     @State private var hasHapticStuckArc: Bool = false
-    @State private var visibleMarkerLabels: Set<Double> = []
+    @State private var markerLabelsInRange: [Double] = []
     
     private var markerSnapThreshold: Double {
         max((bounds.upperBound - bounds.lowerBound) * 0.02, 4)
@@ -173,16 +176,16 @@ public struct CircularRangeSlider: View {
     private func markerView(at value: Double) -> some View {
         let angle = angleFromValue(value)
         let centerRadius = circleDiameter / 2
-        let markerRadius = centerRadius + trackWidth * 0.65
+        let markerRadius = centerRadius - trackWidth * 0.75 * (isMarkerOutside ? -1 : 1)
         let sine = sin(CGFloat(angle.radians - (3 * .pi / 2)))
         let cosine = cos(CGFloat(angle.radians - (3 * .pi / 2)))
         let markerX = centerRadius + markerRadius * cosine
         let markerY = centerRadius + markerRadius * sine
-        let labelRadius = centerRadius + trackWidth * 1.85
+        let labelRadius = centerRadius - trackWidth * 1.85 * (isMarkerOutside ? -1 : 1)
         let labelAngle = angle.radians - (3 * .pi / 2)
         let labelX = centerRadius + labelRadius * cos(CGFloat(labelAngle))
         let labelY = centerRadius + labelRadius * sin(CGFloat(labelAngle))
-        let isLabelVisible = visibleMarkerLabels.contains(value)
+        let isLabelVisible = markerLabelsInRange.last == value
         ZStack {
             if let markerLabel = markerLabel, isLabelVisible {
                 Group {
@@ -272,17 +275,22 @@ extension CircularRangeSlider {
     
     private func updateVisibleMarkerLabels() {
         guard let markers = markers, !markers.isEmpty else {
-            visibleMarkerLabels.removeAll()
+            markerLabelsInRange.removeAll()
             return
         }
-        var newVisibleLabels: Set<Double> = []
+        var newVisibleLabels: [Double] = []
         for marker in markers {
             if marker >= range.lowerBound && marker <= range.upperBound {
-                newVisibleLabels.insert(marker)
+                newVisibleLabels.append(marker)
+                if !markerLabelsInRange.contains(marker) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        markerLabelsInRange.append(marker)
+                    }
+                }
             }
         }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            visibleMarkerLabels = newVisibleLabels
+        markerLabelsInRange.removeAll { marker in
+            !newVisibleLabels.contains(marker)
         }
     }
 }
@@ -540,6 +548,7 @@ private struct CircularRangeSliderPreview: View {
     @State private var color: Color
     @State private var step: Double
     @State private var markers: [Double] = []
+    @State private var isMarkerOutside: Bool = false
     
     private let defaultBounds: ClosedRange<Double> = 0.0...999.0
 
@@ -553,272 +562,278 @@ private struct CircularRangeSliderPreview: View {
     }
 
     var body: some View {
-        VStack {
-            Form {
-                Section(header: Text("Preview")) {
-                    Toggle("Overlay values", isOn: $overlayValues)
+        NavigationStack {
+            VStack {
+                Form {
+                    Section(header: Text("Preview")) {
+                        Toggle("Overlay values", isOn: $overlayValues)
+                    }
+                    Section(header: Text("Bounds")) {
+                        HStack {
+                            Text("Lower")
+                            Spacer()
+                            TextField(
+                                "Lower",
+                                value: Binding<Int>(
+                                    get: {
+                                        Int(bounds.lowerBound)
+                                    },
+                                    set: {
+                                        let newBounds = Double($0)...bounds.upperBound
+                                        self.bounds = newBounds
+                                        self.step = CircularRangeSlider.defaultBoundsStep(for: newBounds)
+                                    }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Upper")
+                            Spacer()
+                            TextField(
+                                "Upper",
+                                value: Binding<Int>(
+                                    get: {
+                                        Int(bounds.upperBound)
+                                    },
+                                    set: {
+                                        let newBounds = bounds.lowerBound...Double($0)
+                                        self.bounds = newBounds
+                                        self.step = CircularRangeSlider.defaultBoundsStep(for: newBounds)
+                                    }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Section(header: Text("User selection")) {
+                        HStack {
+                            Text("Lower")
+                            Spacer()
+                            TextField(
+                                "Lower",
+                                value: Binding<Int>(
+                                    get: {
+                                        Int(rangeUserSelection.lowerBound)
+                                    },
+                                    set: {
+                                        self.rangeUserSelection = Double($0)...rangeUserSelection.upperBound
+                                    }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Upper")
+                            Spacer()
+                            TextField(
+                                "Upper",
+                                value: Binding<Int>(
+                                    get: {
+                                        Int(rangeUserSelection.upperBound)
+                                    },
+                                    set: {
+                                        self.rangeUserSelection = rangeUserSelection.lowerBound...Double($0)
+                                    }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Section(header: Text("Precision")) {
+                        HStack {
+                            Text("Step length")
+                            Spacer()
+                            TextField(
+                                "Step",
+                                value: Binding<Int>(
+                                    get: { Int(step) },
+                                    set: { self.step = Double($0) }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Section(header: Text("Markers")) {
+                        ForEach(Array(markers.enumerated()), id: \.offset) { index, marker in
+                            HStack {
+                                Text(String(format: "%.1f", marker))
+                                    .frame(width: 56, alignment: .leading)
+                                    .foregroundStyle(.primary)
+                                Slider(
+                                    value: Binding<Double>(
+                                        get: { marker },
+                                        set: { self.markers[index] = $0 }
+                                    ),
+                                    in: bounds
+                                )
+                                Button {
+                                    markers.remove(at: index)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        Button {
+                            let newMarker = bounds.lowerBound + (bounds.upperBound - bounds.lowerBound) / 2
+                            markers.append(newMarker)
+                        } label: {
+                            Label("Add Marker", systemImage: "plus.circle.fill")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Section(header: Text("Appearance")) {
+                        ColorPicker("Slider color", selection: $color)
+                        HStack {
+                            Text("Circle track diameter")
+                            Spacer()
+                            TextField(
+                                "Pixels",
+                                value: Binding<Int>(
+                                    get: { Int(circleDiameter) },
+                                    set: { self.circleDiameter = CGFloat($0) }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Circle track width")
+                            Spacer()
+                            TextField(
+                                "Pixels",
+                                value: Binding<Int>(
+                                    get: { Int(trackWidth) },
+                                    set: { self.trackWidth = Double($0) }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Handle width")
+                            Spacer()
+                            TextField(
+                                "Pixels",
+                                value: Binding<Int>(
+                                    get: { Int(handleWidth) },
+                                    set: { self.handleWidth = CGFloat($0) }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Arc trimming size")
+                            Spacer()
+                            TextField(
+                                "Degrees",
+                                value: Binding<Int>(
+                                    get: { Int(arcTrimmingDegrees) },
+                                    set: { self.arcTrimmingDegrees = CGFloat($0) }
+                                ),
+                                format: IntegerFormatStyle().grouping(.never)
+                            )
+                            .keyboardType(.numberPad)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                        }
+                        Toggle("Markers outside", isOn: $isMarkerOutside)
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem {
                     Button("Show circular range slider") {
                         showSlider = true
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                Section(header: Text("Bounds")) {
-                    HStack {
-                        Text("Lower")
-                        Spacer()
-                        TextField(
-                            "Lower",
-                            value: Binding<Int>(
-                                get: {
-                                    Int(bounds.lowerBound)
-                                },
-                                set: {
-                                    let newBounds = Double($0)...bounds.upperBound
-                                    self.bounds = newBounds
-                                    self.step = CircularRangeSlider.defaultBoundsStep(for: newBounds)
-                                }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
+            }
+            .sheet(isPresented: $showSlider) {
+                NavigationStack {
+                    ZStack {
+                        if overlayValues {
+                            VStack {
+                                Text(String(format: "%.1f", rangeUserSelection.lowerBound))
+                                    .bold()
+                                    .font(.system(size: 24))
+                                Image(systemName: "arrow.up.arrow.down")
+                                    .padding(.vertical, 0.25)
+                                    .foregroundStyle(.secondary)
+                                Text(String(format: "%.1f", rangeUserSelection.upperBound))
+                                    .bold()
+                                    .font(.system(size: 24))
+                            }
+                        }
+                        CircularRangeSlider(
+                            range: $rangeUserSelection,
+                            bounds: bounds,
+                            circleDiameter: circleDiameter,
+                            arcTrimmingDegrees: arcTrimmingDegrees,
+                            trackWidth: trackWidth,
+                            handleWidth: handleWidth,
+                            color: color,
+                            step: step,
+                            markers: markers.isEmpty ? nil : markers,
+                            markerLabel: { value in
+                                AnyView(
+                                    VStack {
+                                        Text(String(format: "%.0f", value))
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                        Text("custom")
+                                            .bold()
+                                            .foregroundColor(.primary)
+                                    }
+                                )
+                            },
+                            isMarkerOutside: isMarkerOutside
                         )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
                     }
-                    HStack {
-                        Text("Upper")
-                        Spacer()
-                        TextField(
-                            "Upper",
-                            value: Binding<Int>(
-                                get: {
-                                    Int(bounds.upperBound)
-                                },
-                                set: {
-                                    let newBounds = bounds.lowerBound...Double($0)
-                                    self.bounds = newBounds
-                                    self.step = CircularRangeSlider.defaultBoundsStep(for: newBounds)
-                                }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                Section(header: Text("User selection")) {
-                    HStack {
-                        Text("Lower")
-                        Spacer()
-                        TextField(
-                            "Lower",
-                            value: Binding<Int>(
-                                get: {
-                                    Int(rangeUserSelection.lowerBound)
-                                },
-                                set: {
-                                    self.rangeUserSelection = Double($0)...rangeUserSelection.upperBound
-                                }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Upper")
-                        Spacer()
-                        TextField(
-                            "Upper",
-                            value: Binding<Int>(
-                                get: {
-                                    Int(rangeUserSelection.upperBound)
-                                },
-                                set: {
-                                    self.rangeUserSelection = rangeUserSelection.lowerBound...Double($0)
-                                }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                Section(header: Text("Precision")) {
-                    HStack {
-                        Text("Step length")
-                        Spacer()
-                        TextField(
-                            "Step",
-                            value: Binding<Int>(
-                                get: { Int(step) },
-                                set: { self.step = Double($0) }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                Section(header: Text("Markers")) {
-                    ForEach(Array(markers.enumerated()), id: \.offset) { index, marker in
-                        HStack {
-                            Text(String(format: "%.1f", marker))
-                                .frame(width: 56, alignment: .leading)
-                                .foregroundStyle(.primary)
-                            Slider(
-                                value: Binding<Double>(
-                                    get: { marker },
-                                    set: { self.markers[index] = $0 }
-                                ),
-                                in: bounds
-                            )
-                            Button {
-                                markers.remove(at: index)
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundColor(.red)
+                    .navigationTitle("Circular range slider")
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button("Settings") {
+                                self.showSlider.toggle()
                             }
                         }
                     }
-                    Button {
-                        let newMarker = bounds.lowerBound + (bounds.upperBound - bounds.lowerBound) / 2
-                        markers.append(newMarker)
-                    } label: {
-                        Label("Add Marker", systemImage: "plus.circle.fill")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.borderless)
                 }
-                Section(header: Text("Appearance")) {
-                    ColorPicker("Slider color", selection: $color)
-                    HStack {
-                        Text("Circle track diameter")
-                        Spacer()
-                        TextField(
-                            "Pixels",
-                            value: Binding<Int>(
-                                get: { Int(circleDiameter) },
-                                set: { self.circleDiameter = CGFloat($0) }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Circle track width")
-                        Spacer()
-                        TextField(
-                            "Pixels",
-                            value: Binding<Int>(
-                                get: { Int(trackWidth) },
-                                set: { self.trackWidth = Double($0) }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Handle width")
-                        Spacer()
-                        TextField(
-                            "Pixels",
-                            value: Binding<Int>(
-                                get: { Int(handleWidth) },
-                                set: { self.handleWidth = CGFloat($0) }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Arc trimming size")
-                        Spacer()
-                        TextField(
-                            "Degrees",
-                            value: Binding<Int>(
-                                get: { Int(arcTrimmingDegrees) },
-                                set: { self.arcTrimmingDegrees = CGFloat($0) }
-                            ),
-                            format: IntegerFormatStyle().grouping(.never)
-                        )
-                        .keyboardType(.numberPad)
-                        .frame(width: 90)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                    }
-                }
+                .presentationDetents([.height(420)])
+                .background(Color(uiColor: .systemBackground))
             }
-        }
-        .sheet(isPresented: $showSlider) {
-            NavigationStack {
-                ZStack {
-                    CircularRangeSlider(
-                        range: $rangeUserSelection,
-                        bounds: bounds,
-                        circleDiameter: circleDiameter,
-                        arcTrimmingDegrees: arcTrimmingDegrees,
-                        trackWidth: trackWidth,
-                        handleWidth: handleWidth,
-                        color: color,
-                        step: step,
-                        markers: markers.isEmpty ? nil : markers,
-                        markerLabel: { value in
-                            AnyView(
-                                VStack {
-                                    Text(String(format: "%.0f", value))
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                    Text("custom")
-                                        .bold()
-                                        .foregroundColor(.primary)
-                                }
-                            )
-                        }
-                    )
-                    if overlayValues {
-                        VStack {
-                            Text(String(format: "%.1f", rangeUserSelection.lowerBound))
-                                .bold()
-                                .font(.system(size: 24))
-                            Image(systemName: "arrow.up.arrow.down")
-                                .padding(.vertical, 0.25)
-                                .foregroundStyle(.secondary)
-                            Text(String(format: "%.1f", rangeUserSelection.upperBound))
-                                .bold()
-                                .font(.system(size: 24))
-                        }
-                    }
-                }
-                .navigationTitle("Circular range slider")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Settings") {
-                            self.showSlider.toggle()
-                        }
-                    }
-                }
-            }
-            .presentationDetents([.height(420)])
-            .background(Color(uiColor: .systemBackground))
         }
     }
 }
-
